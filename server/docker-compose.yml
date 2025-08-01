@@ -29,6 +29,14 @@ services:
       CLEARML__services__async_urls_delete__fileserver__url_prefixes: '[${CLEARML_FILES_HOST:-}]'
       CLEARML__secure__credentials__services_agent__user_key: ${CLEARML_AGENT_ACCESS_KEY:-}
       CLEARML__secure__credentials__services_agent__user_secret: ${CLEARML_AGENT_SECRET_KEY:-}
+      # CLEARML__SECURE__HTTP__SESSION_SECRET__APISERVER: 
+      # CLEARML__SECURE__AUTH__TOKEN_SECRET: 
+      # CLEARML__SECURE__CREDENTIALS__APISERVER__USER_KEY: 
+      # CLEARML__SECURE__CREDENTIALS__APISERVER__USER_SECRET: 
+      # CLEARML__SECURE__CREDENTIALS__WEBSERVER__USER_KEY: 
+      # CLEARML__SECURE__CREDENTIALS__WEBSERVER__USER_SECRET: 
+      # CLEARML__SECURE__CREDENTIALS__TESTS__USER_KEY: 
+      # CLEARML__SECURE__CREDENTIALS__TESTS__USER_SECRET: 
     ports:
       - 8008:8008
     networks:
@@ -185,6 +193,46 @@ services:
       - apiserver
     entrypoint: >
       bash -c "curl --retry 10 --retry-delay 10 --retry-connrefused 'http://apiserver:8008/debug.ping' && /usr/agent/entrypoint.sh"
+
+  s3:
+    restart: always
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: s3-storage
+    ports:
+      - 9000:9000
+      - 9001:9001
+    networks:
+      - frontend
+      - backend
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    command: server /data --console-address ':9001' --address ':9000'
+    volumes:
+      - ${MINIO_ROOT_DIR:-/opt/s3-storage}:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  s3_setup:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: s3_setup
+    depends_on:
+      - s3
+    networks:
+      - backend
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    entrypoint: ['/bin/sh', '-c']
+    command: 
+      - |
+        mc alias set s3_store http://s3:9000 ${MINIO_USER} ${MINIO_PASSWORD}
+        mc admin user svcacct add --access-key ${AWS_ACCESS_KEY_ID} --secret-key ${AWS_SECRET_ACCESS_KEY} s3_store ${MINIO_USER}
+        mc mb s3_store/data
+        mc mb s3_store/models
 
 networks:
   backend:
