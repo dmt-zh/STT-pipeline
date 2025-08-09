@@ -22,21 +22,25 @@ data:
     snr_levels: [10, 20]
     percentage: 0.1
   common_voice:
-    include: false
+    include: true
     lang: kk
     path: 'fsicoli/common_voice_19_0'
     split: 'train[:100]+test[:30]+validation[:30]'
     cache_dir: './data/common_voice'
-    num_proc: 2
-    slice: 500
+    slice: :15
+    shuffle: true
+    seed: 444
+    num_proc: 1
   fleurs:
-    include: false
+    include: true
     lang: kk_kz
     path: 'google/fleurs'
     split: 'train[:100]+validation[:30]+test[:30]'
     cache_dir: './data/fleurs'
-    slice: 500 
-    num_proc: 2
+    slice: :15
+    shuffle: false
+    seed: 444
+    num_proc: 1
 
 lora_params:
   alpha: 96

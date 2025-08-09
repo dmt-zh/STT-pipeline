@@ -1,48 +1,53 @@
 import gc
 import logging
 import numpy as np
-import torch
+import os
+import re
 import sys
+import torch
 import yaml
 
 from collections.abc import Mapping
-from logging import Logger
 from typing import Any
 
 ##############################################################################################
 
-logging_config = {
-    'level': logging.INFO,
-    'format': '%(asctime)s | %(message)s (called: "%(funcName)s": from module: "%(pathname)s")'
-}
-logging.basicConfig(**logging_config, datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger(__name__)
-
-##############################################################################################
-
-def setup_environment(logger: Logger, n_threads: int = 1) -> None:
+def setup_environment(n_threads: int = 1) -> None:
     gc.collect()
     torch.cuda.empty_cache()
-    logger.info('\033[0;32m✔\033[0m Cuda cache cleaned and carbage is collected!')
+    logging.info('\033[0;32m✔\033[0m Cuda cache cleaned and carbage is collected!')
     torch.set_num_threads(n_threads)
-    logger.info(f'\033[0;32m✔\033[0m Torch threads are set to "{n_threads}"')
+    logging.info(f'\033[0;32m✔\033[0m Torch threads are set to "{n_threads}"')
 
 ##############################################################################################
 
-def setup_random_seed(logger: Logger, seed: int = 44) -> None:
+def setup_random_seed(seed: int = 44) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
-    logger.info(f'🔑 Seed is set to "{seed}" for numpy and torch.')
+    logging.info(f'🔑 Seed is set to "{seed}" for numpy and torch.')
 
 ##############################################################################################
 
-def load_config(logger: Logger) -> Mapping[str, Any]:
+def load_config() -> Mapping[str, Any]:
     config_name = 'config.yml' if len(sys.argv) == 1 else sys.argv[1]
     with open(config_name) as config_yml:
         config = yaml.safe_load(config_yml)
-    logger.info('\033[0;32m✔\033[0m Config is successfully loaded!')
+    logging.info('\033[0;32m✔\033[0m Config is successfully loaded!')
     return config
 
 ##############################################################################################
+
+def slice_converter(patt: str) -> slice:
+    if not patt:
+        return False
+    patt = str(patt)
+    if re.fullmatch(r':-?\d+', patt):
+        return slice(None, int(patt.replace(':', '')), None)
+    if re.fullmatch(r'-?\d+:', patt):
+        return slice(int(patt.replace(':', '')), None, None)
+    if re.fullmatch(r'::\d+', patt):
+        return slice(None, None, int(patt.replace(':', '')))
+    logging.info(f'❌ ERROR. Invalid slice pattern passed. Valid options: ":±int", "±int:" or "::int"')
+    os._exit(os.EX_OSFILE)
