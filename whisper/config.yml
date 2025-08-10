@@ -1,4 +1,9 @@
+setup:
+  torch_threads: 1
+  seed: 123
+
 clearml:
+  enable: true
   project_name: 'Whisper Kazakh'
   experiment_name: 'Baseline tuning'
   tags:
@@ -6,41 +11,44 @@ clearml:
     - tuning
     - small
 
-setup:
-  torch_threads: 1
-  seed: 123
-
 model:
   model_size: small
   model_name: openai/whisper
+  language: kazakh
   task: transcribe
+  cache_dir: ./models/origin_model
+  prefix: small_kk
 
 data:
+  eval_fraction: 5
+  filter_audio: false
+  filter_text: false
+  num_proc: 2
   noise:
-    include: true
+    include: false
     file_path: ./data/noisy_audio.wav
     snr_levels: [10, 20]
     percentage: 0.1
   common_voice:
     include: true
     lang: kk
-    path: 'fsicoli/common_voice_19_0'
-    split: 'train[:100]+test[:30]+validation[:30]'
-    cache_dir: './data/common_voice'
-    slice: :15
-    shuffle: true
-    seed: 444
+    path: fsicoli/common_voice_19_0
+    split: train[:100]+test[:30]+validation[:30]
+    cache_dir: ./data/common_voice
     num_proc: 1
   fleurs:
-    include: true
+    include: false
     lang: kk_kz
-    path: 'google/fleurs'
-    split: 'train[:100]+validation[:30]+test[:30]'
-    cache_dir: './data/fleurs'
-    slice: :15
-    shuffle: false
-    seed: 444
+    path: google/fleurs
+    split: train[:100]+validation[:30]+test[:30]
+    cache_dir: ./data/fleurs
     num_proc: 1
+  custom:
+    include: true
+    path: ./data/custom_kk
+    slice: :50
+    shuffle: true
+    seed: 44
 
 lora_params:
   alpha: 96
@@ -54,33 +62,33 @@ lora_params:
     - o_proj
 
 training_args:
-  per_device_train_batch_size: 18
-  gradient_accumulation_steps: 2
-  per_device_eval_batch_size: 18
-  gradient_checkpointing: true
-  optim: paged_adamw_8bit
-  save_total_limit: 60
-  save_strategy: steps
-  save_steps: 100
-  logging_steps: 100
-  learning_rate: 0.00002
-  fp16: false
-  bf16: true
-  eval_steps: 500
-  evaluation_strategy: steps
+  do_train: true
+  output_dir: ./models/tunes
   eval_strategy: steps
-  num_train_epochs: 4
-  max_steps: -1
+  eval_steps: 2
+  eval_on_start: true
+  per_device_train_batch_size: 18
+  per_device_eval_batch_size: 18
+  gradient_accumulation_steps: 2
+  learning_rate: 0.00002
   weight_decay: 0.01
-  warmup_steps: 1000
-  group_by_length: true
-  lr_scheduler_type: cosine
   max_grad_norm: 5.0
-  report_to: none
-  load_best_model_at_end: true
+  num_train_epochs: 1
+  max_steps: 10
+  lr_scheduler_type: cosine
+  warmup_steps:
+  logging_strategy: steps
+  logging_steps: 2
+  save_strategy: steps
+  save_steps: 2
+  save_total_limit: 60
+  fp16: true
+  bf16: false
+  remove_unused_columns: false
+  load_best_model_at_end: false
   greater_is_better: false
   metric_for_best_model: loss
-  generation_max_length: 128
-  remove_unused_columns: false
+  optim: adamw_torch
+  group_by_length: true
   label_names:
     - labels
