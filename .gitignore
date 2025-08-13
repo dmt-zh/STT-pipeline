@@ -1,3 +1,13 @@
 # Environments
+**/.DS_Store
+**.log
+.venv
 .env
-/server/.env
+server/.env
+whisper/models/*
+whisper/runs/*
+whisper/data/*
+!/whisper/data/noisy_audio.wav
+whisper/.venv
+whisper/.env
+whisper/uv.lock
