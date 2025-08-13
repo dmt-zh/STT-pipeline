@@ -19,10 +19,12 @@ model:
   cache_dir: ./models/origin_model
   prefix: small_kk
 
+
 data:
-  eval_fraction: 5
+  eval_fraction: 30
   filter_audio: false
   filter_text: false
+  debug_samples: 3
   num_proc: 2
   noise:
     include: false
@@ -37,7 +39,7 @@ data:
     cache_dir: ./data/common_voice
     num_proc: 1
   fleurs:
-    include: false
+    include: true
     lang: kk_kz
     path: google/fleurs
     split: train[:100]+validation[:30]+test[:30]
@@ -46,7 +48,7 @@ data:
   custom:
     include: true
     path: ./data/custom_kk
-    slice: :50
+    slice: :350
     shuffle: true
     seed: 44
 
@@ -63,24 +65,26 @@ lora_params:
 
 training_args:
   do_train: true
+  num_train_epochs: 1
+  max_steps: 10
+  save_steps: 5
+  logging_steps: 5
+  eval_steps: 5
   output_dir: ./models/tunes
-  eval_strategy: steps
-  eval_steps: 2
-  eval_on_start: true
   per_device_train_batch_size: 18
   per_device_eval_batch_size: 18
   gradient_accumulation_steps: 2
-  learning_rate: 0.00002
+  learning_rate: 0.00005
   weight_decay: 0.01
   max_grad_norm: 5.0
-  num_train_epochs: 1
-  max_steps: 10
   lr_scheduler_type: cosine
   warmup_steps:
   logging_strategy: steps
-  logging_steps: 2
+  logging_dir: ./models/logs
+  logging_first_step: true
+  eval_strategy: steps
+  eval_on_start: true
   save_strategy: steps
-  save_steps: 2
   save_total_limit: 60
   fp16: true
   bf16: false
@@ -89,6 +93,7 @@ training_args:
   greater_is_better: false
   metric_for_best_model: loss
   optim: adamw_torch
-  group_by_length: true
+  group_by_length: false
   label_names:
     - labels
+  report_to: none

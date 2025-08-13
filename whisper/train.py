@@ -2,7 +2,8 @@
 
 import logging
 from dotenv import load_dotenv
-from clearml import Task, Logger as CMLogger
+from clearml import Task
+from clearml.utilities.proxy_object import flatten_dictionary
 from collections.abc import Mapping
 from os import environ
 from pathlib import Path
@@ -14,6 +15,7 @@ from utils.misc import (
     fetch_model_and_processor,
     init_lora_config,
     init_train_config,
+    ClearMLCallback,
     SpeechSeq2SeqWithPadding,
 )
 from utils.service import (
@@ -22,6 +24,7 @@ from utils.service import (
     setup_random_seed,
     PipelineArgs
 )
+
 
 ##############################################################################################
 
@@ -70,26 +73,45 @@ def clearml_train(config: Mapping[str, PipelineArgs]) -> None:
     clearml_task.connect_configuration(
         configuration=config,
         name='config.yml',
-        description='Finetuning config'
+        description='The configuration of finetuning task'
     )
     whisper_model, whisper_processor = fetch_model_and_processor(config=config.get('model'))
     whisper_dataset = WhisperDataset(config=config.get('data'), processor=whisper_processor)
     train_dataset = whisper_dataset.fetch()
     lora_config = init_lora_config(config=config.get('lora_params'))
     train_config = init_train_config(config=config)
-    model_to_train = get_peft_model(whisper_model, lora_config)
+    peft_model = get_peft_model(whisper_model, lora_config)
 
-    writer = SummaryWriter()
+    clearml_task._arguments.copy_from_dict(
+        lora_config.to_dict(),
+        prefix='LoraConfig',
+    )
+    clearml_task._arguments.copy_from_dict(
+        flatten_dictionary(train_config.to_dict()),
+        prefix='TrainingArguments',
+    )
+    clearml_task.connect_configuration(
+        configuration=peft_model.config.to_dict(),
+        name='WhisperModel',
+        description='The configuration of Whisper model'
+    )
     whisper_trainer = Seq2SeqTrainer(
         args=train_config,
-        model=model_to_train,
+        model=peft_model,
         train_dataset=train_dataset['train'],
         eval_dataset=train_dataset['test'],
         data_collator=SpeechSeq2SeqWithPadding(processor=whisper_processor),
         processing_class=whisper_processor.feature_extractor,
     )
+    clerml_callback = ClearMLCallback(
+        clearml_task=clearml_task,
+        processor=whisper_processor,
+        trainer=whisper_trainer,
+        k=config.get('data').get('debug_samples', 1),
+    )
+    whisper_trainer.add_callback(clerml_callback)
     if config.get('training_args').get('do_train', False):
-        model_to_train.config.use_cache = False # silence the warnings. Please re-enable for inference!
+        peft_model.config.use_cache = False # silence the warnings. Please re-enable for inference!
         whisper_trainer.train()
         clearml_task.close()
     else:

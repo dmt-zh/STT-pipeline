@@ -1,12 +1,19 @@
 import logging
 from collections.abc import Mapping
+from clearml import Task
 from dataclasses import dataclass
+from io import StringIO
 from os import environ
 from pathlib import Path
-from peft import prepare_model_for_kbit_training, LoraConfig
+from peft import prepare_model_for_kbit_training, LoraConfig, PeftModel
+from random import choices
 from torch import Tensor
 from transformers import (
     Seq2SeqTrainingArguments,
+    Trainer,
+    TrainerCallback,
+    TrainerState,
+    TrainerControl,
     WhisperFeatureExtractor,
     WhisperTokenizer,
     WhisperProcessor,
@@ -15,23 +22,6 @@ from transformers import (
 from typing import Any
 from utils.service import PipelineArgs, WhisperFeatures
 
-##############################################################################################
-
-@dataclass
-class SpeechSeq2SeqWithPadding:
-    processor: Any
-
-    def __call__(self, features: WhisperFeatures) -> Mapping[str, Tensor]:
-        input_features = [{'input_features': feature['input_features']} for feature in features]
-        batch = self.processor.feature_extractor.pad(input_features, return_tensors='pt')
-        label_features = [{'input_ids': feature['labels']} for feature in features]
-        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors='pt')
-        labels = labels_batch['input_ids'].masked_fill(labels_batch.attention_mask.ne(1), -100)
-        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
-            labels = labels[:, 1:]
-
-        batch['labels'] = labels
-        return batch
 
 ##############################################################################################
 
@@ -93,6 +83,9 @@ def init_train_config(config: Mapping[str, PipelineArgs]) -> Seq2SeqTrainingArgu
     prefix = config.get('model').get('prefix', 'whisper_tune')
     train_args = config.get('training_args')
     output_dir = Path(train_args.get('output_dir')).resolve()
+    curr_dir = Path(__file__).resolve().parent
+    default_log_dir = curr_dir.joinpath('logs')
+    loggin_dir = Path(train_args.get('logging_dir', default_log_dir)).resolve()
     save_dir = output_dir.joinpath(prefix)
 
     train_config = Seq2SeqTrainingArguments(
@@ -109,8 +102,12 @@ def init_train_config(config: Mapping[str, PipelineArgs]) -> Seq2SeqTrainingArgu
         num_train_epochs=train_args.get('num_train_epochs', 3),
         max_steps=train_args.get('max_steps', -1),
         lr_scheduler_type=train_args.get('lr_scheduler_type', 'linear'),
+        logging_dir=str(loggin_dir),
         logging_strategy=train_args.get('logging_strategy', 'steps'),
+        logging_steps=train_args.get('logging_steps', 500),
+        logging_first_step=train_args.get('logging_first_step', False),
         save_strategy=train_args.get('save_strategy', 'steps'),
+        save_steps=train_args.get('save_steps', 500),
         save_total_limit=train_args.get('save_total_limit', None),
         fp16=train_args.get('fp16', False),
         bf16=train_args.get('bf16', False),
@@ -121,9 +118,126 @@ def init_train_config(config: Mapping[str, PipelineArgs]) -> Seq2SeqTrainingArgu
         optim=train_args.get('optim', 'adamw_torch'),
         group_by_length=train_args.get('group_by_length', False),
         label_names=train_args.get('label_names', None),
-        report_to=['tensorboard'],
+        report_to=train_args.get('report_to', 'none'),
+        seed=config.get('setup', {}).get('seed', 44),
     )
     logging.info(f'Initialized training config with Seq2SeqTrainingArguments.')
     return train_config
+
+##############################################################################################
+
+@dataclass
+class SpeechSeq2SeqWithPadding:
+    processor: Any
+
+    def __call__(self, features: WhisperFeatures) -> Mapping[str, Tensor]:
+        input_features = [{'input_features': feature['input_features']} for feature in features]
+        batch = self.processor.feature_extractor.pad(input_features, return_tensors='pt')
+        label_features = [{'input_ids': feature['labels']} for feature in features]
+        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors='pt')
+        labels = labels_batch['input_ids'].masked_fill(labels_batch.attention_mask.ne(1), -100)
+        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
+            labels = labels[:, 1:]
+
+        batch['labels'] = labels
+        return batch
+
+##############################################################################################
+
+class ClearMLCallback(TrainerCallback):
+    def __init__(self, clearml_task: Task, processor: WhisperProcessor, trainer: Trainer, k: int) -> None:
+        self._clearml_task = clearml_task
+        self._processor = processor
+        self._trainer = trainer
+        self._k = k
+
+    ##########################################################################################
+
+    def on_log(
+        self,
+        args: Seq2SeqTrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        model: PeftModel | None = None,
+        processing_class: WhisperFeatureExtractor | None = None,
+        logs: Mapping[str, int | float] | None = None,
+        **kwargs,
+    ):
+        if 'eval_loss' in logs:
+            self._clearml_task.get_logger().report_scalar(
+                title=f'Loss',
+                series='eval',
+                value=logs.get('eval_loss'),
+                iteration=state.global_step,
+            )
+        if 'train_runtime' in logs:
+            if state.best_metric:
+                self._clearml_task.get_logger().report_single_value(
+                    name='Best metric',
+                    value=round(state.best_metric, 5),
+                )
+                self._clearml_task.get_logger().report_single_value(
+                    name='Checkpoint',
+                    value=state.best_global_step,
+                )
+
+            self._clearml_task.get_logger().report_single_value(
+                name='Epochs',
+                value=round(logs.get('epoch'), 2),
+            )
+            self._clearml_task.get_logger().report_single_value(
+                name='Runtime',
+                value=logs.get('train_runtime'),
+            )
+            self._clearml_task.get_logger().report_single_value(
+                name='Samples/sec',
+                value=logs.get('train_samples_per_second'),
+            )
+            self._clearml_task.get_logger().report_single_value(
+                name='Steps/sec',
+                value=logs.get('train_steps_per_second'),
+            )
+        if 'learning_rate' in logs:
+            self._clearml_task.get_logger().report_scalar(
+                title=f'Loss',
+                series='train',
+                value=logs.get('loss'),
+                iteration=state.global_step,
+            )
+            self._clearml_task.get_logger().report_scalar(
+                title=f'train: learning rate',
+                value=logs.get('learning_rate'),
+                series='learning rate',
+                iteration=state.global_step,
+            )
+            self._clearml_task.get_logger().report_scalar(
+                title=f'train: norm gradients',
+                value=logs.get('grad_norm'),
+                series='gradients norm',
+                iteration=state.global_step,
+            )
+
+        sample_ids = choices(range(len(self._trainer.eval_dataset)), k=self._k)
+        samples = self._trainer.eval_dataset.select(sample_ids)
+        samples_audio_path = samples['path']
+        samples_sentences = samples['sentence']
+        predicted_labels = self._trainer.predict(samples).label_ids
+        decoded_samples = self._processor.batch_decode(predicted_labels, skip_special_tokens=True)
+
+        for idx, (input_str, output_str, audi_path) in enumerate(zip(samples_sentences, decoded_samples, samples_audio_path), 1):
+            self._clearml_task.get_logger().report_media(
+                title='eval samples',
+                series=f'text-{idx}',
+                iteration=state.global_step,
+                stream=StringIO(f'{input_str} | original text\n{output_str} | predicted text'),
+                file_extension='.txt',
+            )
+            self._clearml_task.get_logger().report_media(
+                title='eval samples',
+                f'audio-{idx}',
+                iteration=state.global_step,
+                local_path=audi_path,
+                delete_after_upload=False,
+            )
 
 ##############################################################################################
