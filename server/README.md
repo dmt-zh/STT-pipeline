@@ -20,7 +20,7 @@ sudo apt update -y
 sudo apt install git
 ```
 
-Устанавливаем `docker` и `docker compose` по инструкциями из [документации](https://docs.docker.com/engine/install/ubuntu/#uninstall-old-versions):
+Устанавливаем `docker` и `docker compose` по инструкциям из [документации](https://docs.docker.com/engine/install/ubuntu/#uninstall-old-versions):
 ```sh
 for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do sudo apt-get remove $pkg; done
 ```
@@ -145,7 +145,7 @@ Password: admin12345 (CLEARML_PASSWORD)
 <img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_settings.jpg"/>
 
 На главной странице выбрать раздел `My Work`
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_mywork.jpg"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_mywork.jpg" width="600" height="600"/>
 
 ### Остановка ClearML сервера
 
