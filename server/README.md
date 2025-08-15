@@ -1,6 +1,6 @@
 ## ClearML Tracking Server
 
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml-server.jpg" width="800" height="500"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml-server.jpg" width="850" height="500"/>
 
 
 ### Подготовка удаленного сервера
@@ -120,7 +120,7 @@ sudo ./setup.sh
 sudo ./run.sh
 ```
 
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/server_start.jpg" width="800" height="500"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/server_start.jpg" width="850" height="500"/>
 
 
 Для того чтобы убедится, что сервер успешно запустился смотрим логи сервера в контейнер `clearml-apiserver`, в логах должно быть сообщение что сервер вернул статус код 200:
@@ -128,11 +128,12 @@ sudo ./run.sh
 sudo docker logs clearml-apiserver --tail 50 -f
 ```
 
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/apiserver_200.jpg" width="800" height="500"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/apiserver_200.jpg" width="850" height="500"/>
 
 
 После того как сервер запустился, в строке браузера вводим IP адрес сервера с портом 8080
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/webserver_ui.jpg"/>
+
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/webserver_ui.jpg" width="850" height="500"/>
 
 Произойдет перенаправление на страницу аутентификации. Необходимо войти в сервис под пользователем и паролем, которые указаны в `.env` файле:
 ```
@@ -140,19 +141,21 @@ Username: admin (CLEARML_USERNAME)
 Password: admin12345 (CLEARML_PASSWORD)
 ```
 
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_auth.jpg" width="800" height="500"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_auth.jpg" width="850" height="500"/>
 
 
 После аутентификации попадаем на главную страницу
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_dashboard.jpg" width="800" height="500"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_dashboard.jpg" width="850" height="500"/>
 
 
 Из главной страницы можно убрать дефолтные примеры в разделе `Settings → Configuration`
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_settings.jpg"/>
+
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_settings.jpg" width="850" height="500"/>
+
 
 На главной странице выбрать раздел `My Work`
 
-<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_mywork.jpg" width="800" height="500"/>
+<img src="https://github.com/dmt-zh/STT-pipeline/blob/main/static/clearml_mywork.jpg" width="500" height="500"/>
 
 
 ### Остановка ClearML сервера
