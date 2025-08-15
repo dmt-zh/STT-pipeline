@@ -79,4 +79,4 @@ cp "${BASE_APISERVER_CONFIG}" "${CLEARML_CONFIG_DIR}"
 
 sed -i -E "s/(username:)[[:space:]]*.*/\1 \"${CLEARML_USERNAME}\"/" "${CLEARML_CONFIG_DIR}/apiserver.conf"
 sed -i -E "s/(password:)[[:space:]]*.*/\1 \"${CLEARML_PASSWORD}\"/" "${CLEARML_CONFIG_DIR}/apiserver.conf"
-echo -e "\033[0;32m✔\033[0m Updated "apiserver.conf" in \"${CLEARML_CONFIG_DIR}\" directory."
+echo -e "\033[0;32m✔\033[0m Updated "apiserver.conf" in \"${BASE_APISERVER_CONFIG}\" directory."
