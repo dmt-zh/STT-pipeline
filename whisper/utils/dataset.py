@@ -1,5 +1,8 @@
 import logging
 import os
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+
 from datasets import (
     Audio,
     Dataset,
@@ -8,11 +11,10 @@ from datasets import (
 )
 from datasets.formatting.formatting import LazyRow
 from datasets.utils.logging import disable_progress_bar
-from collections.abc import Mapping, Sequence
 from numpy.random import RandomState
-from pathlib import Path
 from transformers import WhisperProcessor
-from utils.service import slice_converter, PipelineArgs
+
+from utils.service import PipelineArgs, slice_converter
 
 ##############################################################################################
 
@@ -122,7 +124,7 @@ class WhisperDataset:
             num_proc=self._config.get('common_voice').get('num_proc', 1)
         )
         processed_dataset = restructed_dataset.cast_column('audio', Audio(sampling_rate=16000))
-        logging.info(f'Restructured "Common Voice" and casted audio to "sampling_rate=16000".')
+        logging.info('Restructured "Common Voice" and casted audio to "sampling_rate=16000".')
         return processed_dataset
 
     ##########################################################################################
@@ -137,7 +139,7 @@ class WhisperDataset:
             num_proc=self._config.get('fleurs').get('num_proc', 1)
         )
         processed_dataset = restructed_dataset.cast_column('audio', Audio(sampling_rate=16000))
-        logging.info(f'Restructured "Fleurs" and casted audio to "sampling_rate=16000".')
+        logging.info('Restructured "Fleurs" and casted audio to "sampling_rate=16000".')
         return processed_dataset
 
     ##########################################################################################
@@ -199,10 +201,7 @@ class WhisperDataset:
             logging.info(f'"Custom" dataset size is: {len(custom_dataset)} samples.')
             datasets_to_concat.append(custom_dataset)
 
-        if len(datasets_to_concat) == 1:
-            combined_dataset = datasets_to_concat[0]
-        else:
-            combined_dataset = concatenate_datasets(datasets_to_concat)
+        combined_dataset = datasets_to_concat[0] if len(datasets_to_concat) == 1 else concatenate_datasets(datasets_to_concat)
         logging.info(f'Combined dataset for tuning Whisper has size "{len(combined_dataset)}" samples.')
         return combined_dataset
 

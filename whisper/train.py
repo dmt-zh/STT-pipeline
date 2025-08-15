@@ -1,30 +1,24 @@
 #!.venv/bin/python3
 
 import logging
-from dotenv import load_dotenv
-from clearml import Task
-from clearml.utilities.proxy_object import flatten_dictionary
 from collections.abc import Mapping
 from os import environ
-from pathlib import Path
+
+from clearml import Task
+from clearml.utilities.proxy_object import flatten_dictionary
+from dotenv import load_dotenv
 from peft import get_peft_model
 from transformers import Seq2SeqTrainer
-from torch.utils.tensorboard import SummaryWriter
+
 from utils.dataset import WhisperDataset
 from utils.misc import (
+    ClearMLCallback,
+    SpeechSeq2SeqWithPadding,
     fetch_model_and_processor,
     init_lora_config,
     init_train_config,
-    ClearMLCallback,
-    SpeechSeq2SeqWithPadding,
 )
-from utils.service import (
-    load_config,
-    setup_environment,
-    setup_random_seed,
-    PipelineArgs
-)
-
+from utils.service import PipelineArgs, load_config, setup_environment, setup_random_seed
 
 ##############################################################################################
 

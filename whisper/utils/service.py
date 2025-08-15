@@ -1,28 +1,20 @@
 import gc
 import logging
-import numpy as np
 import os
 import re
 import sys
+from collections.abc import Mapping, Sequence
+
+import numpy as np
 import torch
 import yaml
-
-from collections.abc import Mapping, Sequence
 from torch import Tensor
-from typing import TypeAlias, Union
 
 ##############################################################################################
 
-PipelineArg: TypeAlias = Union[
-    bool,
-    int,
-    float,
-    str,
-    Sequence[int | float],
-]
-PipelineArgs: TypeAlias = Mapping[str, PipelineArg]
-
-WhisperFeatures: TypeAlias = Sequence[Mapping[str, Union[Sequence[int], Tensor]]]
+type PipelineArg = bool | int | float | str | Sequence[int | float]
+type PipelineArgs = Mapping[str, PipelineArg]
+type WhisperFeatures = Sequence[Mapping[str, Sequence[int] | Tensor]]
 
 ##############################################################################################
 
@@ -63,7 +55,7 @@ def slice_converter(patt: str) -> slice:
         return slice(int(patt.replace(':', '')), None, None)
     if re.fullmatch(r'::\d+', patt):
         return slice(None, None, int(patt.replace(':', '')))
-    logging.info(f'❌ ERROR. Invalid slice pattern passed. Valid options: ":±int", "±int:" or "::int"')
+    logging.info('❌ ERROR. Invalid slice pattern passed. Valid options: ":±int", "±int:" or "::int"')
     os._exit(os.EX_OSFILE)
 
 ##############################################################################################

@@ -1,27 +1,28 @@
 import logging
 from collections.abc import Mapping
-from clearml import Task
 from dataclasses import dataclass
 from io import StringIO
 from os import environ
 from pathlib import Path
-from peft import prepare_model_for_kbit_training, LoraConfig, PeftModel
 from random import choices
+from typing import Any
+
+from clearml import Task
+from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
 from torch import Tensor
 from transformers import (
     Seq2SeqTrainingArguments,
     Trainer,
     TrainerCallback,
-    TrainerState,
     TrainerControl,
+    TrainerState,
     WhisperFeatureExtractor,
-    WhisperTokenizer,
+    WhisperForConditionalGeneration,
     WhisperProcessor,
-    WhisperForConditionalGeneration
+    WhisperTokenizer,
 )
-from typing import Any
-from utils.service import PipelineArgs, WhisperFeatures
 
+from utils.service import PipelineArgs, WhisperFeatures
 
 ##############################################################################################
 
@@ -46,7 +47,7 @@ def fetch_model_and_processor(config: Mapping[str, PipelineArgs]) -> tuple[Whisp
         feature_extractor=feature_extractor,
         tokenizer=tokenizer,
     )
-    logging.info(f'Initialized processor with WhisperProcessor.')
+    logging.info('Initialized processor with WhisperProcessor.')
     model = WhisperForConditionalGeneration.from_pretrained(
         pretrained_model_name_or_path=model_name,
         cache_dir=model_download_path,
@@ -54,7 +55,7 @@ def fetch_model_and_processor(config: Mapping[str, PipelineArgs]) -> tuple[Whisp
     )
     ## FIXME: (uncomment after finishing) logging.info(f'Whisper model architecture\n{model}\n')
     prepared_model = prepare_model_for_kbit_training(model)
-    logging.info(f'Initialized and prepared Whisper model for training.')
+    logging.info('Initialized and prepared Whisper model for training.')
     return prepared_model, processor
 
 ##############################################################################################
@@ -71,7 +72,7 @@ def init_lora_config(config: Mapping[str, PipelineArgs]) -> LoraConfig:
         bias=config.get('bias', 'none'),
         target_modules=config.get('target_modules', 'all-linear'),
     )
-    logging.info(f'Initialized lora config with LoraConfig.')
+    logging.info('Initialized lora config with LoraConfig.')
     return lora_config
 
 ##############################################################################################
@@ -121,7 +122,7 @@ def init_train_config(config: Mapping[str, PipelineArgs]) -> Seq2SeqTrainingArgu
         report_to=train_args.get('report_to', 'none'),
         seed=config.get('setup', {}).get('seed', 44),
     )
-    logging.info(f'Initialized training config with Seq2SeqTrainingArguments.')
+    logging.info('Initialized training config with Seq2SeqTrainingArguments.')
     return train_config
 
 ##############################################################################################
@@ -165,7 +166,7 @@ class ClearMLCallback(TrainerCallback):
     ):
         if 'eval_loss' in logs:
             self._clearml_task.get_logger().report_scalar(
-                title=f'Loss',
+                title='Loss',
                 series='eval',
                 value=logs.get('eval_loss'),
                 iteration=state.global_step,
@@ -199,19 +200,19 @@ class ClearMLCallback(TrainerCallback):
             )
         if 'learning_rate' in logs:
             self._clearml_task.get_logger().report_scalar(
-                title=f'Loss',
+                title='Loss',
                 series='train',
                 value=logs.get('loss'),
                 iteration=state.global_step,
             )
             self._clearml_task.get_logger().report_scalar(
-                title=f'train: learning rate',
+                title='train: learning rate',
                 value=logs.get('learning_rate'),
                 series='learning rate',
                 iteration=state.global_step,
             )
             self._clearml_task.get_logger().report_scalar(
-                title=f'train: norm gradients',
+                title='train: norm gradients',
                 value=logs.get('grad_norm'),
                 series='gradients norm',
                 iteration=state.global_step,
@@ -224,7 +225,7 @@ class ClearMLCallback(TrainerCallback):
         predicted_labels = self._trainer.predict(samples).label_ids
         decoded_samples = self._processor.batch_decode(predicted_labels, skip_special_tokens=True)
 
-        for idx, (input_str, output_str, audi_path) in enumerate(zip(samples_sentences, decoded_samples, samples_audio_path), 1):
+        for idx, (input_str, output_str, audi_path) in enumerate(zip(samples_sentences, decoded_samples, samples_audio_path, strict=False), 1):
             self._clearml_task.get_logger().report_media(
                 title='eval samples',
                 series=f'text-{idx}',
@@ -234,7 +235,7 @@ class ClearMLCallback(TrainerCallback):
             )
             self._clearml_task.get_logger().report_media(
                 title='eval samples',
-                f'audio-{idx}',
+                series=f'audio-{idx}',
                 iteration=state.global_step,
                 local_path=audi_path,
                 delete_after_upload=False,
