@@ -18,7 +18,13 @@ from utils.misc import (
     init_lora_config,
     init_train_config,
 )
-from utils.service import PipelineArgs, load_config, setup_environment, setup_random_seed
+from utils.service import (
+    PipelineArgs,
+    get_trainable_params,
+    load_config,
+    setup_environment,
+    setup_random_seed,
+)
 
 ##############################################################################################
 
@@ -32,7 +38,11 @@ logging.basicConfig(**logging_config, datefmt='%Y-%m-%d %H:%M:%S')
 
 def local_train(config: Mapping[str, PipelineArgs]) -> None:
     whisper_model, whisper_processor = fetch_model_and_processor(config=config.get('model'))
-    whisper_dataset = WhisperDataset(config=config.get('data'), processor=whisper_processor)
+    whisper_dataset = WhisperDataset(
+        config=config.get('data'),
+        processor=whisper_processor,
+        seed=config.get('setup', {}).get('seed', 44),
+    )
     train_dataset = whisper_dataset.fetch()
     lora_config = init_lora_config(config=config.get('lora_params'))
     train_config = init_train_config(config=config)
@@ -47,7 +57,7 @@ def local_train(config: Mapping[str, PipelineArgs]) -> None:
         processing_class=whisper_processor.feature_extractor,
     )
     if config.get('training_args').get('do_train', False):
-        peft_model.config.use_cache = False # silence the warnings. Please re-enable for inference!
+        peft_model.config.use_cache = False
         logging.info('✔ Started training!')
         whisper_trainer.train()
     else:
@@ -70,24 +80,40 @@ def clearml_train(config: Mapping[str, PipelineArgs]) -> None:
         description='The configuration of finetuning task'
     )
     whisper_model, whisper_processor = fetch_model_and_processor(config=config.get('model'))
-    whisper_dataset = WhisperDataset(config=config.get('data'), processor=whisper_processor)
+    whisper_dataset = WhisperDataset(
+        config=config.get('data'),
+        processor=whisper_processor,
+        seed=config.get('setup', {}).get('seed', 44),
+    )
     train_dataset = whisper_dataset.fetch()
     lora_config = init_lora_config(config=config.get('lora_params'))
     train_config = init_train_config(config=config)
     peft_model = get_peft_model(whisper_model, lora_config)
+    
+    lora_params = {k: sorted(v) if isinstance(v, set) else v for k, v in lora_config.to_dict().items()}
+    train_params = {k: sorted(v) if isinstance(v, set) else v for k, v in train_config.to_dict().items()}
 
     clearml_task._arguments.copy_from_dict(
-        lora_config.to_dict(),
+        flatten_dictionary(lora_params),
         prefix='LoraConfig',
     )
     clearml_task._arguments.copy_from_dict(
-        flatten_dictionary(train_config.to_dict()),
+        flatten_dictionary(train_params),
         prefix='TrainingArguments',
+    )
+    clearml_task._arguments.copy_from_dict(
+        get_trainable_params(peft_model),
+        prefix='TrainableParams',
     )
     clearml_task.connect_configuration(
         configuration=peft_model.config.to_dict(),
         name='WhisperModel',
-        description='The configuration of Whisper model'
+        description='The configuration of Whisper model',
+    )
+    clearml_task.upload_artifact(
+        name='Model architecture',
+        artifact_object=repr(peft_model),
+        sort_keys=False,
     )
     whisper_trainer = Seq2SeqTrainer(
         args=train_config,
@@ -105,7 +131,7 @@ def clearml_train(config: Mapping[str, PipelineArgs]) -> None:
     )
     whisper_trainer.add_callback(clerml_callback)
     if config.get('training_args').get('do_train', False):
-        peft_model.config.use_cache = False # silence the warnings. Please re-enable for inference!
+        peft_model.config.use_cache = False
         whisper_trainer.train()
         clearml_task.close()
     else:

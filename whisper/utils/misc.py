@@ -9,7 +9,7 @@ from typing import Any
 
 from clearml import Task
 from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
-from torch import Tensor
+from torch import Tensor, nn
 from transformers import (
     Seq2SeqTrainingArguments,
     Trainer,
@@ -23,6 +23,11 @@ from transformers import (
 )
 
 from utils.service import PipelineArgs, WhisperFeatures
+
+##############################################################################################
+
+def make_inputs_require_grad(module: nn.Conv1d, input_tensors: tuple[Tensor], output_tensor: Tensor):
+    output_tensor.requires_grad_(True)
 
 ##############################################################################################
 
@@ -53,8 +58,8 @@ def fetch_model_and_processor(config: Mapping[str, PipelineArgs]) -> tuple[Whisp
         cache_dir=model_download_path,
         device_map='auto',
     )
-    ## FIXME: (uncomment after finishing) logging.info(f'Whisper model architecture\n{model}\n')
     prepared_model = prepare_model_for_kbit_training(model)
+    prepared_model.model.encoder.conv1.register_forward_hook(make_inputs_require_grad)
     logging.info('Initialized and prepared Whisper model for training.')
     return prepared_model, processor
 

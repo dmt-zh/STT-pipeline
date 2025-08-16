@@ -10,15 +10,11 @@ from datasets import (
     load_dataset,
 )
 from datasets.formatting.formatting import LazyRow
-from datasets.utils.logging import disable_progress_bar
+from datasets.utils.logging import disable_progress_bar, enable_progress_bar
 from numpy.random import RandomState
 from transformers import WhisperProcessor
 
 from utils.service import PipelineArgs, slice_converter
-
-##############################################################################################
-
-disable_progress_bar()
 
 ##############################################################################################
 
@@ -74,14 +70,19 @@ def _transform_and_tokenize_sample(sample: LazyRow, processor: WhisperProcessor)
 ##############################################################################################
 
 class WhisperDataset:
-    def __init__(self, config: Mapping[str, PipelineArgs], processor: WhisperProcessor) -> None:
+    def __init__(self, config: Mapping[str, PipelineArgs], processor: WhisperProcessor, seed: int) -> None:
         self._config = config
         self._processor = processor
+        self._seed = seed
         self._add_noise = self._is_required('noise', config)
         self._common_voice = self._is_required('common_voice', config)
         self._fleurs = self._is_required('fleurs', config)
         self._custom = self._is_required('custom', config)
         self._columns = ('audio', 'sentence', 'raw_transcription', 'path')
+        if self._config.get('disable_tqdm', False):
+            disable_progress_bar()
+        else:
+            enable_progress_bar()
 
     ##########################################################################################
 
@@ -167,7 +168,7 @@ class WhisperDataset:
             text_files = tuple(text_files[slice_patt])
 
         if dataset_config.get('shuffle', False):
-            indices = _generate_random_sequence(len(text_files), dataset_config.get('seed', 123))
+            indices = _generate_random_sequence(len(text_files), self._seed)
             audio_files = tuple(audio_files[idx] for idx in indices)
             text_files = tuple(text_files[idx] for idx in indices)
 
