@@ -7,6 +7,7 @@ from pathlib import Path
 from random import choices
 from typing import Any
 
+import numpy as np
 from clearml import Task
 from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
 from torch import Tensor, nn
@@ -108,6 +109,8 @@ def init_train_config(config: Mapping[str, PipelineArgs]) -> Seq2SeqTrainingArgu
         num_train_epochs=train_args.get('num_train_epochs', 3),
         max_steps=train_args.get('max_steps', -1),
         lr_scheduler_type=train_args.get('lr_scheduler_type', 'linear'),
+        warmup_steps=train_args.get('warmup_steps', 0),
+        label_smoothing_factor=train_args.get('label_smoothing_factor', 0),
         logging_dir=str(loggin_dir),
         logging_strategy=train_args.get('logging_strategy', 'steps'),
         logging_steps=train_args.get('logging_steps', 500),
@@ -116,7 +119,9 @@ def init_train_config(config: Mapping[str, PipelineArgs]) -> Seq2SeqTrainingArgu
         save_steps=train_args.get('save_steps', 500),
         save_total_limit=train_args.get('save_total_limit', None),
         fp16=train_args.get('fp16', False),
+        fp16_full_eval=train_args.get('fp16_full_eval', False),
         bf16=train_args.get('bf16', False),
+        bf16_full_eval=train_args.get('bf16_full_eval ', False),
         remove_unused_columns=train_args.get('remove_unused_columns', True),
         load_best_model_at_end=train_args.get('load_best_model_at_end', False),
         greater_is_better=train_args.get('greater_is_better', None),
@@ -176,17 +181,16 @@ class ClearMLCallback(TrainerCallback):
                 value=logs.get('eval_loss'),
                 iteration=state.global_step,
             )
+        if state.best_metric:
+            self._clearml_task.get_logger().report_single_value(
+                name='Best chkpt',
+                value=state.best_global_step,
+            )
+            self._clearml_task.get_logger().report_single_value(
+                name='Best metric',
+                value=round(state.best_metric, 5),
+            )
         if 'train_runtime' in logs:
-            if state.best_metric:
-                self._clearml_task.get_logger().report_single_value(
-                    name='Best metric',
-                    value=round(state.best_metric, 5),
-                )
-                self._clearml_task.get_logger().report_single_value(
-                    name='Checkpoint',
-                    value=state.best_global_step,
-                )
-
             self._clearml_task.get_logger().report_single_value(
                 name='Epochs',
                 value=round(logs.get('epoch'), 2),
@@ -227,16 +231,19 @@ class ClearMLCallback(TrainerCallback):
         samples = self._trainer.eval_dataset.select(sample_ids)
         samples_audio_path = samples['path']
         samples_sentences = samples['sentence']
-        predicted_labels = self._trainer.predict(samples).label_ids
-        decoded_samples = self._processor.batch_decode(predicted_labels, skip_special_tokens=True)
+
+        predictions = self._trainer.predict(samples).predictions
+        labels_ids = np.argmax(predictions[0], axis=-1)
+        decoded_samples = self._processor.batch_decode(labels_ids, skip_special_tokens=True)
 
         for idx, (input_str, output_str, audi_path) in enumerate(zip(samples_sentences, decoded_samples, samples_audio_path, strict=False), 1):
             self._clearml_task.get_logger().report_media(
                 title='eval samples',
                 series=f'text-{idx}',
                 iteration=state.global_step,
-                stream=StringIO(f'{input_str} | original text\n{output_str} | predicted text'),
+                stream=StringIO(f'{input_str} | original text\n{output_str.strip()} | predicted text'),
                 file_extension='.txt',
+                max_history=15,
             )
             self._clearml_task.get_logger().report_media(
                 title='eval samples',
@@ -244,6 +251,7 @@ class ClearMLCallback(TrainerCallback):
                 iteration=state.global_step,
                 local_path=audi_path,
                 delete_after_upload=False,
+                max_history=15,
             )
 
 ##############################################################################################

@@ -1,11 +1,12 @@
 # Environments
 __pycache__
-.ruff_cache
 **/.DS_Store
 **.log
 .venv
 .env
+.ruff_cache/
 server/.env
+whisper/htmls/
 whisper/models/*
 whisper/runs/*
 whisper/data/*

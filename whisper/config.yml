@@ -17,7 +17,10 @@ model:
   language: kazakh
   task: transcribe
   cache_dir: ./models/origin_model
-  prefix: small_kk_250816_v2
+  prefix: small_kk_v1
+  merged_model_dir: ./models/merged
+  ct2_model_dir: ./models/ct2_converted
+  quantization: float16
 
 data:
   eval_fraction: 30
@@ -65,7 +68,7 @@ lora_params:
 training_args:
   do_train: true
   num_train_epochs: 1
-  max_steps: 10
+  max_steps: 30
   save_steps: 5
   logging_steps: 5
   eval_steps: 5
@@ -73,20 +76,23 @@ training_args:
   per_device_train_batch_size: 18
   per_device_eval_batch_size: 18
   gradient_accumulation_steps: 2
-  learning_rate: 0.0005
+  learning_rate: 0.000075
   weight_decay: 0.01
   max_grad_norm: 5.0
   lr_scheduler_type: cosine
-  warmup_steps:
+  warmup_steps: 
+  label_smoothing_factor: 0
   logging_strategy: steps
   logging_dir: ./models/logs
   logging_first_step: true
   eval_strategy: steps
-  eval_on_start: true
+  eval_on_start: false
   save_strategy: steps
-  save_total_limit: 60
+  save_total_limit: 25
   fp16: true
+  fp16_full_eval: false
   bf16: false
+  bf16_full_eval: false
   remove_unused_columns: false
   load_best_model_at_end: false
   greater_is_better: false
