@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Mapping
 from os import environ
+from pathlib import Path
 
 from clearml import Task
 from clearml.utilities.proxy_object import flatten_dictionary
@@ -146,6 +147,8 @@ def clearml_train(config: Mapping[str, PipelineArgs]) -> None:
         peft_model.config.use_cache = False
         whisper_trainer.train()
         best_model_checkpoint = whisper_trainer.state.best_model_checkpoint
+        best_model_path = Path(best_model_checkpoint).resolve()
+        logging.info(f'Evaluating best checkpoint "{best_model_path.name}"')
         if best_model_checkpoint:
             merge_and_evaluate(
                 dataset=train_dataset['test'],
@@ -154,6 +157,28 @@ def clearml_train(config: Mapping[str, PipelineArgs]) -> None:
                 adapters_path=None,
                 iter_chkpt=False,
             )
+            logging.info(f'Uploading best adapter "{best_model_path.name}" to S3.')
+            clearml_task.upload_artifact(
+                name=best_model_path.name,
+                artifact_object=best_model_checkpoint,
+                delete_after_upload=False,
+            )
+            if whisper_trainer.state.best_global_step != whisper_trainer.state.global_step:
+                last_chkpt_name = f'checkpoint-{whisper_trainer.state.global_step}'
+                last_model_path = best_model_path.parent.joinpath(last_chkpt_name)
+                logging.info(f'Evaluating last checkpoint "{last_chkpt_name}"')
+                merge_and_evaluate(
+                    dataset=train_dataset['test'],
+                    best_chkpt_path=str(last_model_path),
+                    iter_step=whisper_trainer.state.global_step + 2,
+                    last_chkpt=True,
+                )
+                logging.info(f'Uploading last checkpoint "{last_chkpt_name}" to S3.')
+                clearml_task.upload_artifact(
+                    name=last_chkpt_name,
+                    artifact_object=str(last_model_path),
+                    delete_after_upload=False,
+                )
         else:
             logging.info('WARNING. No "best_model_checkpoint" was gained. Skipping merging and evaluation.')
         clearml_task.close()

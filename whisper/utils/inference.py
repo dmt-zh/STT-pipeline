@@ -14,6 +14,7 @@ from datasets import Dataset
 from jiwer import cer, wer
 from peft import PeftModel
 from pydub import AudioSegment
+from tqdm import tqdm
 from transformers import (
     AutoProcessor,
     AutoTokenizer,
@@ -22,7 +23,7 @@ from transformers import (
 )
 
 from utils.html import generate_html
-from utils.service import PipelineArgs
+from utils.service import PipelineArgs, setup_environment
 
 ##############################################################################################
 
@@ -176,7 +177,7 @@ class AdapterEvaluator:
         }
         total_wer = 0
         total_cer = 0
-        for audio in dataset:
+        for audio in tqdm(dataset, desc='Recognizing and calculating...', mininterval=20, maxinterval=30):
             recognized_text = _recognize_audio_file(
                 file_path=audio['path'], 
                 lang=self._config.get('language'),
@@ -190,9 +191,9 @@ class AdapterEvaluator:
             evaluated_dataset['recognized'].append(recognized_text)
             evaluated_dataset['wer'].append(sent_wer * 100)
             evaluated_dataset['cer'].append(sent_cer * 100)
-        
-        average_cer = round(total_cer / len(evaluated_dataset) * 100, 2)
-        average_wer = round(total_wer / len(evaluated_dataset) * 100, 2)
+
+        average_cer = round(total_cer / len(evaluated_dataset), 2)
+        average_wer = round(total_wer / len(evaluated_dataset), 2)
         logging.info(f'Average CER for "{ct2_whisper_model_path.name}": {average_cer}')
         logging.info(f'Average WER for "{ct2_whisper_model_path.name}": {average_wer}')
 
@@ -205,6 +206,20 @@ class AdapterEvaluator:
                 name=f'CT2 {prefix} WER',
                 value=average_wer,
             )
+            if prefix == 'Base':
+                self._clearml_task.upload_artifact(
+                    name=f'Sentences "{self._base_model_name}"',
+                    artifact_object='\n'.join(evaluated_dataset['recognized']),
+                )
+            else:
+                self._clearml_task.upload_artifact(
+                    name='Sentences reference',
+                    artifact_object='\n'.join(evaluated_dataset['reference']),
+                )
+                self._clearml_task.upload_artifact(
+                    name=f'Sentences "{ct2_whisper_model_path.name}"',
+                    artifact_object='\n'.join(evaluated_dataset['recognized']),
+                )
         return evaluated_dataset
 
     ##########################################################################################
@@ -216,10 +231,14 @@ class AdapterEvaluator:
         iter_step: int | None = None,
         adapters_path: str | None = None,
         iter_chkpt: bool = False,
+        last_chkpt: bool = False,
     ) -> None:
+        setup_environment(init=False)
         merged_model_path = self._merge_and_save(best_chkpt_path)
         ct2_whisper_model = self._conver_to_ct2(merged_model_path)
-        evaluated_dataset = self._evaluate_converted_model(ct2_whisper_model, dataset, prefix='Best')
+        setup_environment(init=False)
+        prefix = 'Last' if last_chkpt else 'Best'
+        evaluated_dataset = self._evaluate_converted_model(ct2_whisper_model, dataset, prefix=prefix)
         html_table_path = generate_html(evaluated_dataset, ct2_whisper_model.name)
         logging.info(f'Saved HTML to the file "{html_table_path}"')
         if self._clearml_task:
@@ -230,6 +249,8 @@ class AdapterEvaluator:
                 local_path=str(html_table_path),
                 delete_after_upload=False,
             )
-        base_model_path = next(self._base_model_cache.rglob('model.safetensors')).parent
-        base_ct2_whisper_model = self._conver_to_ct2(base_model_path, base_model=True)
-        self._evaluate_converted_model(base_ct2_whisper_model, dataset, prefix='Base')
+        if not last_chkpt:
+            base_model_path = next(self._base_model_cache.rglob('model.safetensors')).parent
+            base_ct2_whisper_model = self._conver_to_ct2(base_model_path, base_model=True)
+            setup_environment(init=False)
+            self._evaluate_converted_model(base_ct2_whisper_model, dataset, prefix='Base')

@@ -20,12 +20,13 @@ type WhisperFeatures = Sequence[Mapping[str, Sequence[int] | Tensor]]
 
 ##############################################################################################
 
-def setup_environment(n_threads: int = 1) -> None:
+def setup_environment(n_threads: int = 1, init: bool = True) -> None:
     gc.collect()
     torch.cuda.empty_cache()
     logging.info("✔ Cuda cache cleaned and carbage is collected!")
-    torch.set_num_threads(n_threads)
-    logging.info(f'✔ Torch threads are set to "{n_threads}"')
+    if init:
+        torch.set_num_threads(n_threads)
+        logging.info(f'✔ Torch threads are set to "{n_threads}"')
 
 ##############################################################################################
 

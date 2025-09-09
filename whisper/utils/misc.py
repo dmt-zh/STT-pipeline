@@ -226,6 +226,10 @@ class ClearMLCallback(TrainerCallback):
                 series='gradients norm',
                 iteration=state.global_step,
             )
+            self._clearml_task.get_logger().report_single_value(
+                name='Epochs',
+                value=round(logs.get('epoch'), 2),
+            )
 
         sample_ids = choices(range(len(self._trainer.eval_dataset)), k=self._k)
         samples = self._trainer.eval_dataset.select(sample_ids)
